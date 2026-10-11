@@ -1,0 +1,40 @@
+data:
+  path: data/raw/adult.csv
+  dvc_file: data/raw/adult.csv.dvc
+  target: income
+  numeric_features:
+    - age
+    - fnlwgt
+    - education_num
+    - capital_gain
+    - capital_loss
+    - hours_per_week
+  categorical_features:
+    - workclass
+    - education
+    - marital_status
+    - occupation
+    - relationship
+    - race
+    - sex
+    - native_country
+  test_size: 0.2
+  random_state: 42
+
+model:
+  type: random_forest
+  params:
+    n_estimators: 100
+    max_depth: 10
+    random_state: 42
+
+mlflow:
+  experiment_name: adult-income-mlops
+
+thresholds:
+  min_accuracy: 0.80
+  min_f1: 0.60
+
+monitoring:
+  drift_threshold: 0.2
+  report_path: reports/drift_report.html
