@@ -1,7 +1,11 @@
 import pandas as pd
+from sklearn.compose import ColumnTransformer
+from sklearn.impute import SimpleImputer
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OneHotEncoder
 
 
-def _validate_input(df, required_columns):
+def validate_input(df, required_columns):
     if not isinstance(df, pd.DataFrame):
         raise TypeError("df must be a pandas DataFrame")
     if df.empty:
@@ -11,21 +15,22 @@ def _validate_input(df, required_columns):
         raise ValueError(f"Missing columns: {missing}")
 
 
-def fill_missing_values(df, numeric_cols, categorical_cols):
-    _validate_input(df, list(numeric_cols) + list(categorical_cols))
-    out = df.copy()
-    for col in numeric_cols:
-        out[col] = out[col].fillna(out[col].median())
-    for col in categorical_cols:
-        out[col] = out[col].fillna("Unknown")
-    return out
-
-
-def encode_categoricals(df, categorical_cols):
-    _validate_input(df, list(categorical_cols))
-    return pd.get_dummies(df.copy(), columns=list(categorical_cols), dtype=int)
-
-
-def preprocess(df, numeric_cols, categorical_cols):
-    filled = fill_missing_values(df, numeric_cols, categorical_cols)
-    return encode_categoricals(filled, categorical_cols)
+def build_preprocessor(numeric_cols, categorical_cols):
+    numeric_pipeline = Pipeline(
+        [("imputer", SimpleImputer(strategy="median"))]
+    )
+    categorical_pipeline = Pipeline(
+        [
+            ("imputer", SimpleImputer(strategy="constant", fill_value="Unknown")),
+            ("encoder", OneHotEncoder(handle_unknown="ignore", sparse_output=False)),
+        ]
+    )
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ("num", numeric_pipeline, list(numeric_cols)),
+            ("cat", categorical_pipeline, list(categorical_cols)),
+        ],
+        verbose_feature_names_out=False,
+    )
+    preprocessor.set_output(transform="pandas")
+    return preprocessor

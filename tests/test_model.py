@@ -13,8 +13,11 @@ def trained():
         "type": "random_forest",
         "params": {"n_estimators": 50, "max_depth": 10, "random_state": 42},
     }
+    d = config["data"]
     X_train, X_test, y_train, y_test = prepare_data(config, sample_size=3000)
-    model = build_model(config["model"])
+    model = build_model(
+        config["model"], d["numeric_features"], d["categorical_features"]
+    )
     model.fit(X_train, y_train)
     return model, X_test, y_test
 

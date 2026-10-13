@@ -8,7 +8,7 @@ from evidently.metric_preset import DataDriftPreset
 from evidently.report import Report
 from sklearn.model_selection import train_test_split
 
-from src.preprocess import fill_missing_values
+from src.preprocess import validate_input
 
 
 def simulate_production(df, seed=42):
@@ -25,6 +25,19 @@ def simulate_production(df, seed=42):
     return prod
 
 
+def fill_missing_from_reference(reference, current, numeric_cols, categorical_cols):
+    ref = reference.copy()
+    cur = current.copy()
+    for col in numeric_cols:
+        median = ref[col].median()
+        ref[col] = ref[col].fillna(median)
+        cur[col] = cur[col].fillna(median)
+    for col in categorical_cols:
+        ref[col] = ref[col].fillna("Unknown")
+        cur[col] = cur[col].fillna("Unknown")
+    return ref, cur
+
+
 def main():
     with open("configs/config.yaml") as f:
         config = yaml.safe_load(f)
@@ -35,15 +48,18 @@ def main():
     features = d["numeric_features"] + d["categorical_features"]
 
     df = pd.read_csv(d["path"])
-    df = fill_missing_values(df, d["numeric_features"], d["categorical_features"])
+    validate_input(df, features)
 
     reference, holdout = train_test_split(
-        df, test_size=d["test_size"], random_state=d["random_state"]
+        df[features], test_size=d["test_size"], random_state=d["random_state"]
     )
     current = simulate_production(holdout)
+    reference, current = fill_missing_from_reference(
+        reference, current, d["numeric_features"], d["categorical_features"]
+    )
 
     report = Report(metrics=[DataDriftPreset()])
-    report.run(reference_data=reference[features], current_data=current[features])
+    report.run(reference_data=reference, current_data=current)
 
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report.save_html(str(report_path))

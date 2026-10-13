@@ -12,7 +12,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 from src.evaluate import check_thresholds, compute_metrics
-from src.preprocess import preprocess
+from src.preprocess import build_preprocessor, validate_input
 
 
 def load_config(path):
@@ -29,7 +29,7 @@ def get_data_version(dvc_file):
         return "unversioned"
 
 
-def build_model(model_cfg):
+def build_model(model_cfg, numeric_cols, categorical_cols):
     model_type = model_cfg["type"]
     params = model_cfg.get("params", {})
     if model_type == "random_forest":
@@ -40,35 +40,44 @@ def build_model(model_cfg):
         clf = GradientBoostingClassifier(**params)
     else:
         raise ValueError(f"Unknown model type: {model_type}")
-    return Pipeline([("scaler", StandardScaler()), ("model", clf)])
+    return Pipeline(
+        [
+            ("preprocessor", build_preprocessor(numeric_cols, categorical_cols)),
+            ("scaler", StandardScaler()),
+            ("model", clf),
+        ]
+    )
 
 
 def prepare_data(config, sample_size=None):
+    """Split RAW data first. All preprocessing happens inside the Pipeline,
+    so imputation values and categories are learned from training rows only."""
     d = config["data"]
     df = pd.read_csv(d["path"])
     if sample_size:
         df = df.sample(n=sample_size, random_state=d["random_state"])
+    feature_cols = d["numeric_features"] + d["categorical_features"]
+    validate_input(df, feature_cols + [d["target"]])
+    X = df[feature_cols]
     y = df[d["target"]]
-    X = preprocess(
-        df.drop(columns=[d["target"]]),
-        d["numeric_features"],
-        d["categorical_features"],
-    )
     return train_test_split(
         X, y, test_size=d["test_size"], random_state=d["random_state"], stratify=y
     )
 
 
 def run_training(config, run_name=None):
+    d = config["data"]
     X_train, X_test, y_train, y_test = prepare_data(config)
-    model = build_model(config["model"])
-    data_version = get_data_version(config["data"]["dvc_file"])
+    model = build_model(
+        config["model"], d["numeric_features"], d["categorical_features"]
+    )
+    data_version = get_data_version(d["dvc_file"])
 
     mlflow.set_experiment(config["mlflow"]["experiment_name"])
     with mlflow.start_run(run_name=run_name):
         mlflow.log_param("model_type", config["model"]["type"])
         mlflow.log_params(config["model"].get("params", {}))
-        mlflow.log_param("test_size", config["data"]["test_size"])
+        mlflow.log_param("test_size", d["test_size"])
         mlflow.log_param("data_version", data_version)
         mlflow.set_tag("data_version", data_version)
 
